@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alien Blast!</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background-color: #070720;
+      color: #39ff14;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+      /* Use a red crosshair SVG as the cursor for the whole page */
+      cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><line x1="16" y1="2" x2="16" y2="30" stroke="red" stroke-width="2"/><line x1="2" y1="16" x2="30" y2="16" stroke="red" stroke-width="2"/></svg>') 16 16, crosshair;
+    }
+
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      letter-spacing: 2px;
+      color: #00eaff;
+      text-shadow: 0 0 10px #00eaff, 0 0 20px #39ff14;
+    }
+
+    .score-timer {
+      display: flex;
+      justify-content: space-between;
+      max-width: 400px;
+      margin: 0 auto 20px;
+      font-size: 1.2em;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 80px);
+      grid-gap: 15px;
+      justify-content: center;
+    }
+
+    .hole {
+      width: 80px;
+      height: 80px;
+      border: 2px solid #39ff14;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2em;
+      /* Remove cursor property from here */
+      position: relative;
+      background: radial-gradient(circle at 60% 40%, #222244 60%, #070720 100%);
+      box-shadow: 0 0 10px #00eaff44;
+      transition: box-shadow 0.2s;
+    }
+
+    .hole:hover {
+      box-shadow: 0 0 20px #00eaff99, 0 0 40px #39ff1444;
+    }
+
+    .alien {
+      color: #ff39e6;
+      text-shadow: 0 0 8px #ff39e6, 0 0 16px #fff;
+    }
+
+    .astronaut {
+      color: #fff;
+      text-shadow: 0 0 8px #00eaff, 0 0 16px #fff;
+      filter: drop-shadow(0 0 6px #00eaff);
+    }
+
+    .zapped {
+      color: #00eaff;
+      text-shadow: 0 0 12px #00eaff, 0 0 24px #fff;
+    }
+
+    .penalty {
+      color: #ff0055;
+      text-shadow: 0 0 12px #ff0055, 0 0 24px #fff;
+    }
+
+    .clock {
+      color: #ffe066;
+      text-shadow: 0 0 8px #ffe066, 0 0 16px #fff;
+      filter: drop-shadow(0 0 6px #ffe066);
+    }
+
+    .paused {
+      animation: blink 1s steps(2, start) infinite;
+    }
+
+    @keyframes blink {
+      to {
+        visibility: hidden;
+      }
+    }
+
+    #game-over {
+      margin-top: 20px;
+      font-size: 1.5em;
+      color: #ff0055;
+      text-shadow: 0 0 8px #ff0055, 0 0 16px #fff;
+    }
+  </style>
+</head>
+<body>
+  <h1>ALIEN BLAST!</h1>
+  <div class="score-timer">
+    <div>Score: <span id="score">0</span></div>
+    <div>Time: <span id="timer">30</span>s</div>
+  </div>
+  <div class="grid" id="grid">
+    <!-- 12 Holes -->
+    <div class="hole" data-index="0"></div>
+    <div class="hole" data-index="1"></div>
+    <div class="hole" data-index="2"></div>
+    <div class="hole" data-index="3"></div>
+    <div class="hole" data-index="4"></div>
+    <div class="hole" data-index="5"></div>
+    <div class="hole" data-index="6"></div>
+    <div class="hole" data-index="7"></div>
+    <div class="hole" data-index="8"></div>
+    <div class="hole" data-index="9"></div>
+    <div class="hole" data-index="10"></div>
+    <div class="hole" data-index="11"></div>
+  </div>
+  <div id="game-over"></div>
+
+  <script>
+    const holes = document.querySelectorAll('.hole');
+    const scoreEl = document.getElementById('score');
+    const timerEl = document.getElementById('timer');
+    const gameOverEl = document.getElementById('game-over');
+
+    let score = 0;
+    let timeLeft = 30;
+    let gameInterval;
+    let alienInterval;
+    let gameActive = true;
+    let clockSpawned = false;
+    let timerPaused = false;
+    let pauseTimeout = null;
+
+    function randomHole() {
+      return holes[Math.floor(Math.random() * holes.length)];
+    }
+
+    function showAlien() {
+      if (!gameActive) return;
+      const hole = randomHole();
+      if (
+        hole.classList.contains('alien') ||
+        hole.classList.contains('astronaut') ||
+        hole.classList.contains('clock')
+      ) return;
+
+      // Clock power-up: spawn once per game, 5% chance per tick if not spawned
+      if (!clockSpawned && Math.random() < 0.05) {
+        clockSpawned = true;
+        hole.textContent = '⏰';
+        hole.classList.add('clock');
+
+        hole.onclick = () => {
+          if (!hole.classList.contains('clock') || !gameActive) return;
+          hole.textContent = '🛑';
+          hole.classList.remove('clock');
+          timerPaused = true;
+          timerEl.classList.add('paused');
+          clearInterval(gameInterval);
+          pauseTimeout = setTimeout(() => {
+            timerPaused = false;
+            timerEl.classList.remove('paused');
+            // Resume timer
+            gameInterval = setInterval(timerTick, 1000);
+          }, 5000);
+          setTimeout(() => {
+            hole.textContent = '';
+          }, 500);
+        };
+
+        setTimeout(() => {
+          if (hole.classList.contains('clock')) {
+            hole.textContent = '';
+            hole.classList.remove('clock');
+          }
+        }, 1000 + Math.random() * 1000);
+
+        return;
+      }
+
+      // 20% chance to show astronaut, 80% alien
+      const isAstronaut = Math.random() < 0.2;
+
+      if (isAstronaut) {
+        hole.textContent = '🧑';
+        hole.classList.add('astronaut');
+
+        hole.onclick = () => {
+          if (!hole.classList.contains('astronaut') || !gameActive) return;
+          score -= 20;
+          if (score < 0) score = 0;
+          scoreEl.textContent = score;
+          hole.textContent = '✖️';
+          hole.classList.remove('astronaut');
+          hole.classList.add('penalty');
+          setTimeout(() => {
+            hole.textContent = '';
+            hole.classList.remove('penalty');
+          }, 500);
+        };
+
+        setTimeout(() => {
+          if (hole.classList.contains('astronaut')) {
+            hole.textContent = '';
+            hole.classList.remove('astronaut');
+          }
+        }, 1000 + Math.random() * 1000);
+
+      } else {
+        hole.textContent = '👾';
+        hole.classList.add('alien');
+
+        hole.onclick = () => {
+          if (!hole.classList.contains('alien') || !gameActive) return;
+          score += 10;
+          scoreEl.textContent = score;
+          hole.textContent = '💥';
+          hole.classList.remove('alien');
+          hole.classList.add('zapped');
+          setTimeout(() => {
+            hole.textContent = '';
+            hole.classList.remove('zapped');
+          }, 500);
+        };
+
+        setTimeout(() => {
+          if (hole.classList.contains('alien')) {
+            hole.textContent = '';
+            hole.classList.remove('alien');
+          }
+        }, 1000 + Math.random() * 1000);
+      }
+    }
+
+    function timerTick() {
+      if (timerPaused) return;
+      timeLeft--;
+      timerEl.textContent = timeLeft;
+      if (timeLeft <= 0) {
+        clearInterval(gameInterval);
+        clearInterval(alienInterval);
+        gameActive = false;
+        gameOverEl.textContent = `Mission Complete! Final Score: ${score}`;
+      }
+    }
+
+    function startGame() {
+      score = 0;
+      scoreEl.textContent = score;
+      timeLeft = 30;
+      timerEl.textContent = timeLeft;
+      gameOverEl.textContent = '';
+      gameActive = true;
+      clockSpawned = false;
+      timerPaused = false;
+      timerEl.classList.remove('paused');
+      if (pauseTimeout) clearTimeout(pauseTimeout);
+
+      gameInterval = setInterval(timerTick, 1000);
+      alienInterval = setInterval(showAlien, 600);
+    }
+
+    startGame();
+  </script>
+</body>
+</html>
